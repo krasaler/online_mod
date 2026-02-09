@@ -4,7 +4,9 @@
   var Defined = {
     api: 'https://rezka.ag',  // Use rezka.ag when proxy enabled (better compatibility)
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    proxy: 'https://cors.nb557.workers.dev/'
+    // Try different proxies - cors.fx666 supports param/ format
+    proxy: 'https://cors.fx666.workers.dev/',
+    useParamFormat: true  // Enable param/ header encoding
   };
 
   function useProxy() {
@@ -46,8 +48,24 @@
     var use = useProxy();
     console.log('[Rezka] useProxy:', use);
     if (!use) return url;
-    // Simple proxy format: proxy + url
-    var result = Defined.proxy + url;
+
+    // Build proxy URL with encoded headers
+    var host = getMirror();
+    var result = Defined.proxy;
+
+    // Add headers as param/ path segments
+    result += 'param/Origin=' + encodeURIComponent(host) + '/';
+    result += 'param/Referer=' + encodeURIComponent(host + '/') + '/';
+    result += 'param/User-Agent=' + encodeURIComponent(Defined.userAgent) + '/';
+
+    // Add cookie if available
+    var cookie = Lampa.Storage.get('rezka_cookie', '') + '';
+    if (!cookie || cookie.indexOf('PHPSESSID=') === -1) {
+      cookie = 'PHPSESSID=' + randomId(26) + (cookie ? '; ' + cookie : '');
+    }
+    result += 'param/Cookie=' + encodeURIComponent(cookie) + '/';
+
+    result += url;
     console.log('[Rezka] proxyUrl:', result);
     return result;
   }
@@ -350,10 +368,12 @@
     this.getPage = function (url) {
       var _this = this;
 
+      console.log('[Rezka] getPage:', url);
       network.clear();
       network.timeout(15000);
 
       network.native(proxyUrl(url), function (str) {
+        console.log('[Rezka] getPage response length:', str ? str.length : 0);
         str = str || '';
         data_cache.page_url = url;
 
@@ -456,6 +476,8 @@
         _this.loadContent();
 
       }, function (a, c) {
+        console.log('[Rezka] getPage error:', a, c);
+        _this.activity.loader(false);
         _this.empty(network.errorDecode(a, c));
       }, false, {
         dataType: 'text',
