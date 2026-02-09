@@ -8,7 +8,10 @@
   };
 
   function useProxy() {
-    return Lampa.Storage.field('rezka_use_proxy') === true;
+    var val = Lampa.Storage.field('rezka_use_proxy');
+    // Default to true if not set
+    if (val === undefined || val === null || val === '') return true;
+    return val === true || val === 'true';
   }
 
   function buildProxyEnc() {
@@ -40,8 +43,12 @@
   }
 
   function proxyUrl(url) {
-    if (!useProxy()) return url;
-    return Defined.proxy + buildProxyEnc() + url;
+    var use = useProxy();
+    console.log('[Rezka] useProxy:', use, 'storage value:', Lampa.Storage.field('rezka_use_proxy'));
+    if (!use) return url;
+    var result = Defined.proxy + buildProxyEnc() + url;
+    console.log('[Rezka] proxyUrl:', result);
+    return result;
   }
 
   function getMirror() {
@@ -53,21 +60,9 @@
   }
 
   function getHeaders() {
-    // When proxy is enabled, headers are encoded in URL, so return empty
-    if (useProxy()) {
-      return {};
-    }
-    var host = getMirror();
-    var cookie = Lampa.Storage.get('rezka_cookie', '') + '';
-    var headers = {
-      'Origin': host,
-      'Referer': host + '/',
-      'User-Agent': Defined.userAgent
-    };
-    if (cookie) {
-      headers['Cookie'] = cookie;
-    }
-    return headers;
+    // Headers are encoded in proxy URL, so return empty for browser requests
+    // Browser blocks Origin/Referer/Cookie headers anyway
+    return {};
   }
 
   function decodeStreamUrl(data) {
