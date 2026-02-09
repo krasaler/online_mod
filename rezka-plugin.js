@@ -209,69 +209,114 @@
 
     this.search = function () {
       var _this = this;
-      var title = object.search || object.movie.title;
       var search_url = host + '/engine/ajax/search.php';
       var search_year = parseInt((object.movie.release_date || object.movie.first_air_date || '0000').slice(0, 4));
+
+      // Try original title first (e.g. "Fallout"), then localized title
+      var titles = [];
+      if (object.search) titles.push(object.search);
+      if (object.movie.original_title) titles.push(object.movie.original_title);
+      if (object.movie.original_name) titles.push(object.movie.original_name);
+      if (object.movie.title) titles.push(object.movie.title);
+      if (object.movie.name) titles.push(object.movie.name);
+
+      // Remove duplicates
+      titles = titles.filter(function(t, i) { return t && titles.indexOf(t) === i; });
+
+      console.log('[Rezka] search titles:', titles, 'year:', search_year);
+
+      var all_items = [];
+      var searched = 0;
+
+      function doSearch(title) {
+        var postdata = 'q=' + encodeURIComponent(title);
+
+        network.native(proxyUrl(search_url), function (str) {
+          str = str || '';
+          console.log('[Rezka] search response for "' + title + '":', str.substring(0, 500));
+
+          if (str.indexOf('b-login__login_form') !== -1 && str.indexOf('b-content__main') === -1) {
+            searched++;
+            if (searched >= titles.length) finishSearch();
+            return;
+          }
+
+          var links = str.match(/<li[^>]*>[\s\S]*?<\/li>/g);
+          console.log('[Rezka] found links:', links ? links.length : 0);
+
+          if (links && links.length) {
+            links.forEach(function (link) {
+              var el = $(link);
+              var a = $('a', el);
+              var enty = $('.enty', a);
+              var name = enty.text().trim();
+              enty.remove();
+              var info = a.text().trim();
+              var href = a.attr('href') || '';
+              var year = 0;
+              var match = info.match(/\((\d{4})/);
+              if (match) year = parseInt(match[1]);
+
+              if (name && href) {
+                // Check if not already added
+                var exists = all_items.some(function(i) { return i.link === href; });
+                if (!exists) {
+                  all_items.push({
+                    title: name,
+                    year: year,
+                    link: href
+                  });
+                }
+              }
+            });
+          }
+
+          searched++;
+          if (searched >= titles.length) finishSearch();
+        }, function (a, c) {
+          console.log('[Rezka] search error:', network.errorDecode(a, c));
+          searched++;
+          if (searched >= titles.length) finishSearch();
+        }, postdata, {
+          dataType: 'text',
+          headers: headers
+        });
+      }
+
+      function finishSearch() {
+        console.log('[Rezka] all items:', all_items);
+
+        if (all_items.length === 0) {
+          _this.empty(Lampa.Lang.translate('rezka_not_found') + ' (' + titles.join(', ') + ')');
+          return;
+        }
+
+        var filtered = all_items.filter(function (item) {
+          if (search_year && item.year) {
+            return Math.abs(item.year - search_year) <= 1;
+          }
+          return true;
+        });
+
+        console.log('[Rezka] filtered by year:', filtered);
+
+        if (filtered.length === 1) {
+          _this.getPage(filtered[0].link);
+        } else if (filtered.length > 0) {
+          _this.showResults(filtered);
+        } else if (all_items.length > 0) {
+          _this.showResults(all_items);
+        } else {
+          _this.empty(Lampa.Lang.translate('rezka_not_found') + ' (' + titles.join(', ') + ')');
+        }
+      }
 
       network.clear();
       network.timeout(15000);
 
-      var postdata = 'q=' + encodeURIComponent(title);
-
-      network.native(proxyUrl(search_url), function (str) {
-        str = str || '';
-
-        if (str.indexOf('b-login__login_form') !== -1 && str.indexOf('b-content__main') === -1) {
-          _this.empty(Lampa.Lang.translate('rezka_auth_required'));
-          return;
-        }
-
-        var links = str.match(/<li>\s*<a href=[\s\S]*?<\/li>/g);
-
-        if (links && links.length) {
-          var items = links.map(function (link) {
-            var el = $(link);
-            var a = $('a', el);
-            var enty = $('.enty', a);
-            var name = enty.text().trim();
-            enty.remove();
-            var info = a.text().trim();
-            var href = a.attr('href') || '';
-            var year = 0;
-            var match = info.match(/\((\d{4})/);
-            if (match) year = parseInt(match[1]);
-
-            return {
-              title: name,
-              year: year,
-              link: href
-            };
-          });
-
-          var filtered = items.filter(function (item) {
-            if (search_year && item.year) {
-              return Math.abs(item.year - search_year) <= 1;
-            }
-            return true;
-          });
-
-          if (filtered.length === 1) {
-            _this.getPage(filtered[0].link);
-          } else if (filtered.length > 0) {
-            _this.showResults(filtered);
-          } else if (items.length > 0) {
-            _this.showResults(items);
-          } else {
-            _this.empty(Lampa.Lang.translate('rezka_not_found') + ' (' + title + ')');
-          }
-        } else {
-          _this.empty(Lampa.Lang.translate('rezka_not_found') + ' (' + title + ')');
-        }
-      }, function (a, c) {
-        _this.empty(network.errorDecode(a, c));
-      }, postdata, {
-        dataType: 'text',
-        headers: headers
+      // Search all titles
+      titles.forEach(function(title) {
+        doSearch(title);
       });
     };
 
