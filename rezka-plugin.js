@@ -581,97 +581,57 @@
     };
   }
 
-  function doLogin(callback) {
-    var host = getMirror();
-    var login = Lampa.Storage.get('rezka_login', '');
-    var password = Lampa.Storage.get('rezka_password', '');
+  function addSettingsFolder() {
+    if (Lampa.Settings.main && Lampa.Settings.main() && !Lampa.Settings.main().render().find('[data-component="rezka_plugin"]').length) {
+      var field = $('<div class="settings-folder selector" data-component="rezka_plugin">' +
+        '<div class="settings-folder__icon">' +
+        '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+        '<path d="M4 8L12 4L20 8V16L12 20L4 16V8Z" stroke="currentColor" stroke-width="2"/>' +
+        '<path d="M12 12L12 20M12 12L4 8M12 12L20 8" stroke="currentColor" stroke-width="2"/>' +
+        '</svg>' +
+        '</div>' +
+        '<div class="settings-folder__name">HDRezka</div>' +
+        '</div>');
 
-    if (!login || !password) {
-      Lampa.Noty.show(Lampa.Lang.translate('rezka_enter_credentials'));
-      if (callback) callback(false);
-      return;
+      Lampa.Settings.main().render().find('[data-component="more"]').after(field);
+      Lampa.Settings.main().update();
     }
-
-    var network = new Lampa.Reguest();
-    var url = host + '/ajax/login/';
-
-    var postdata = 'login_name=' + encodeURIComponent(login) + '&login_password=' + encodeURIComponent(password) + '&login_not_498=1';
-
-    Lampa.Noty.show(Lampa.Lang.translate('rezka_logging_in'));
-
-    network.native(proxyUrl(url), function (json) {
-      if (json && json.success) {
-        Lampa.Noty.show(Lampa.Lang.translate('rezka_login_success'));
-        if (callback) callback(true);
-      } else {
-        Lampa.Noty.show(json && json.message ? json.message : Lampa.Lang.translate('rezka_login_failed'));
-        if (callback) callback(false);
-      }
-    }, function () {
-      Lampa.Noty.show(Lampa.Lang.translate('rezka_login_failed'));
-      if (callback) callback(false);
-    }, postdata, {
-      headers: getHeaders()
-    });
   }
 
-  function addSettings() {
-    Lampa.SettingsApi.addParam({
-      component: 'rezka_settings',
-      param: {
-        name: 'rezka_mirror',
-        type: 'input',
-        placeholder: Defined.api,
-        default: ''
-      },
-      field: {
-        name: Lampa.Lang.translate('rezka_mirror')
-      }
-    });
+  function initSettings() {
+    Lampa.Params.select('rezka_mirror', '', '');
+    Lampa.Params.select('rezka_login', '', '');
+    Lampa.Params.select('rezka_password', '', '');
+    Lampa.Params.trigger('rezka_use_proxy', false);
 
-    Lampa.SettingsApi.addParam({
-      component: 'rezka_settings',
-      param: {
-        name: 'rezka_login',
-        type: 'input',
-        placeholder: '',
-        default: ''
-      },
-      field: {
-        name: Lampa.Lang.translate('rezka_login')
-      }
-    });
+    var template = '<div>' +
+      '<div class="settings-param selector" data-name="rezka_mirror" data-type="input" placeholder="' + Defined.api + '">' +
+      '<div class="settings-param__name">' + Lampa.Lang.translate('rezka_mirror') + '</div>' +
+      '<div class="settings-param__value"></div>' +
+      '</div>' +
+      '<div class="settings-param selector" data-name="rezka_login" data-type="input" placeholder="">' +
+      '<div class="settings-param__name">' + Lampa.Lang.translate('rezka_login') + '</div>' +
+      '<div class="settings-param__value"></div>' +
+      '</div>' +
+      '<div class="settings-param selector" data-name="rezka_password" data-type="input" data-string="true" placeholder="">' +
+      '<div class="settings-param__name">' + Lampa.Lang.translate('rezka_password') + '</div>' +
+      '<div class="settings-param__value"></div>' +
+      '</div>' +
+      '<div class="settings-param selector" data-name="rezka_use_proxy" data-type="toggle">' +
+      '<div class="settings-param__name">' + Lampa.Lang.translate('rezka_use_proxy') + '</div>' +
+      '<div class="settings-param__value"></div>' +
+      '</div>' +
+      '</div>';
 
-    Lampa.SettingsApi.addParam({
-      component: 'rezka_settings',
-      param: {
-        name: 'rezka_password',
-        type: 'input',
-        placeholder: '',
-        default: ''
-      },
-      field: {
-        name: Lampa.Lang.translate('rezka_password')
-      }
-    });
+    Lampa.Template.add('settings_rezka_plugin', template);
 
-    Lampa.SettingsApi.addParam({
-      component: 'rezka_settings',
-      param: {
-        name: 'rezka_use_proxy',
-        type: 'trigger',
-        default: false
-      },
-      field: {
-        name: Lampa.Lang.translate('rezka_use_proxy')
-      }
-    });
-
-    Lampa.SettingsApi.addComponent({
-      component: 'rezka_settings',
-      name: 'HDRezka',
-      icon: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 8L12 4L20 8V16L12 20L4 16V8Z" stroke="currentColor" stroke-width="2"/><path d="M12 12L12 20M12 12L4 8M12 12L20 8" stroke="currentColor" stroke-width="2"/></svg>'
-    });
+    if (window.appready) {
+      addSettingsFolder();
+    } else {
+      Lampa.Listener.follow('app', function (e) {
+        if (e.type === 'ready') addSettingsFolder();
+      });
+    }
   }
 
   function addButton(render, object) {
@@ -746,30 +706,6 @@
         uk: 'Не вдалося отримати дані',
         en: 'Failed to get data',
         zh: '获取数据失败'
-      },
-      rezka_enter_credentials: {
-        ru: 'Введите логин и пароль в настройках',
-        uk: 'Введіть логін та пароль у налаштуваннях',
-        en: 'Enter login and password in settings',
-        zh: '在设置中输入用户名和密码'
-      },
-      rezka_logging_in: {
-        ru: 'Выполняется вход...',
-        uk: 'Виконується вхід...',
-        en: 'Logging in...',
-        zh: '登录中...'
-      },
-      rezka_login_success: {
-        ru: 'Вход выполнен успешно',
-        uk: 'Вхід виконано успішно',
-        en: 'Login successful',
-        zh: '登录成功'
-      },
-      rezka_login_failed: {
-        ru: 'Ошибка входа',
-        uk: 'Помилка входу',
-        en: 'Login failed',
-        zh: '登录失败'
       },
       rezka_not_found: {
         ru: 'Ничего не найдено',
@@ -849,6 +785,7 @@
     addLang();
     addTemplates();
     addStyles();
+    initSettings();
 
     Lampa.Component.add('rezka_online', RezkaComponent);
 
@@ -862,10 +799,6 @@
         }, 100);
       }
     });
-
-    if (Lampa.SettingsApi) {
-      addSettings();
-    }
   }
 
   if (window.appready) {
