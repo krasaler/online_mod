@@ -307,7 +307,7 @@
       }
 
       function finishSearch() {
-        console.log('[Rezka] all items:', all_items);
+        console.log('[Rezka] finishSearch called, all items:', all_items);
 
         if (all_items.length === 0) {
           _this.empty(Lampa.Lang.translate('rezka_not_found') + ' (' + titles.join(', ') + ')');
@@ -321,13 +321,16 @@
           return true;
         });
 
-        console.log('[Rezka] filtered by year:', filtered);
+        console.log('[Rezka] filtered by year:', filtered.length, 'items');
 
         if (filtered.length === 1) {
+          console.log('[Rezka] single result, calling getPage');
           _this.getPage(filtered[0].link);
         } else if (filtered.length > 0) {
+          console.log('[Rezka] multiple results, calling showResults');
           _this.showResults(filtered);
         } else if (all_items.length > 0) {
+          console.log('[Rezka] no filtered, showing all items');
           _this.showResults(all_items);
         } else {
           _this.empty(Lampa.Lang.translate('rezka_not_found') + ' (' + titles.join(', ') + ')');
@@ -345,12 +348,17 @@
 
     this.showResults = function (items) {
       var _this = this;
+      console.log('[Rezka] showResults called with', items.length, 'items');
+
       scroll.clear();
 
-      items.forEach(function (item) {
+      items.forEach(function (item, index) {
+        console.log('[Rezka] creating card for:', item.title);
         var card = Lampa.Template.get('rezka_folder', {
           title: item.title + (item.year ? ' (' + item.year + ')' : '')
         });
+
+        console.log('[Rezka] card element:', card.length ? 'exists' : 'MISSING');
 
         card.on('hover:enter', function () {
           _this.activity.loader(true);
@@ -360,6 +368,8 @@
 
         scroll.append(card);
       });
+
+      console.log('[Rezka] scroll children count:', scroll.render().find('.selector').length);
 
       this.activity.loader(false);
       this.start();
