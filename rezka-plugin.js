@@ -598,27 +598,29 @@
     }
   }
 
-  function initSettings() {
+  function initParams() {
     Lampa.Params.select('rezka_mirror', '', '');
     Lampa.Params.select('rezka_login', '', '');
     Lampa.Params.select('rezka_password', '', '');
     Lampa.Params.trigger('rezka_use_proxy', false);
+  }
 
+  function initSettings() {
     var template = '<div>' +
       '<div class="settings-param selector" data-name="rezka_mirror" data-type="input" placeholder="' + Defined.api + '">' +
-      '<div class="settings-param__name">' + Lampa.Lang.translate('rezka_mirror') + '</div>' +
+      '<div class="settings-param__name">#{rezka_mirror}</div>' +
       '<div class="settings-param__value"></div>' +
       '</div>' +
       '<div class="settings-param selector" data-name="rezka_login" data-type="input" placeholder="">' +
-      '<div class="settings-param__name">' + Lampa.Lang.translate('rezka_login') + '</div>' +
+      '<div class="settings-param__name">#{rezka_login}</div>' +
       '<div class="settings-param__value"></div>' +
       '</div>' +
       '<div class="settings-param selector" data-name="rezka_password" data-type="input" data-string="true" placeholder="">' +
-      '<div class="settings-param__name">' + Lampa.Lang.translate('rezka_password') + '</div>' +
+      '<div class="settings-param__name">#{rezka_password}</div>' +
       '<div class="settings-param__value"></div>' +
       '</div>' +
       '<div class="settings-param selector" data-name="rezka_use_proxy" data-type="toggle">' +
-      '<div class="settings-param__name">' + Lampa.Lang.translate('rezka_use_proxy') + '</div>' +
+      '<div class="settings-param__name">#{rezka_use_proxy}</div>' +
       '<div class="settings-param__value"></div>' +
       '</div>' +
       '</div>';
@@ -785,6 +787,7 @@
     addLang();
     addTemplates();
     addStyles();
+    initParams();
     initSettings();
 
     Lampa.Component.add('rezka_online', RezkaComponent);
