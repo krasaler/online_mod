@@ -2,7 +2,7 @@
   'use strict';
 
   var Defined = {
-    api: 'https://kvk.zone',
+    api: 'https://rezka.ag',  // Use rezka.ag when proxy enabled (better compatibility)
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     proxy: 'https://cors.nb557.workers.dev/'
   };
@@ -53,6 +53,11 @@
   }
 
   function getMirror() {
+    // When proxy is enabled, use rezka.ag for better compatibility
+    // User-specified mirror is used when proxy is disabled (e.g., on Android)
+    if (useProxy()) {
+      return Defined.api;  // rezka.ag
+    }
     var url = Lampa.Storage.get('rezka_mirror', '') + '';
     if (!url) return Defined.api;
     if (url.indexOf('://') === -1) url = 'https://' + url;
