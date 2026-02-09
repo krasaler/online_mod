@@ -4,7 +4,7 @@
   var Defined = {
     api: 'https://kvk.zone',
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    proxy: (window.location.protocol === 'https:' ? 'https://' : 'http://') + 'iqslgbok.deploy.cx/'
+    proxy: 'https://cors557.deno.dev/'
   };
 
   function useProxy() {
