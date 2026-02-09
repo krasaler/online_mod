@@ -8,7 +8,7 @@
   };
 
   function useProxy() {
-    return Lampa.Storage.get('rezka_use_proxy', false) === true;
+    return Lampa.Storage.field('rezka_use_proxy') === true;
   }
 
   function proxyUrl(url) {
@@ -87,7 +87,6 @@
     var host = getMirror();
     var headers = getHeaders();
     var data_cache = {};
-    var filter_items = {};
     var choice = {
       season: 0,
       voice: 0
@@ -130,6 +129,12 @@
 
       network.native(proxyUrl(search_url), function (str) {
         str = str || '';
+
+        if (str.indexOf('b-login__login_form') !== -1 && str.indexOf('b-content__main') === -1) {
+          _this.empty(Lampa.Lang.translate('rezka_auth_required'));
+          return;
+        }
+
         var links = str.match(/<li>\s*<a href=[\s\S]*?<\/li>/g);
 
         if (links && links.length) {
@@ -184,12 +189,13 @@
       scroll.clear();
 
       items.forEach(function (item) {
-        var card = Lampa.Template.get('онлайн_folder', {
+        var card = Lampa.Template.get('rezka_folder', {
           title: item.title + (item.year ? ' (' + item.year + ')' : '')
         });
 
         card.on('hover:enter', function () {
           _this.activity.loader(true);
+          scroll.clear();
           _this.getPage(item.link);
         });
 
@@ -317,7 +323,7 @@
     };
 
     this.buildFilter = function () {
-      filter_items = {};
+      var filter_items = {};
 
       if (data_cache.translators && data_cache.translators.length > 1) {
         filter_items.voice = data_cache.translators.map(function (t) {
@@ -394,44 +400,52 @@
       var hash = Lampa.Utils.hash(object.movie.id + '_' + (item.season || 0) + '_' + (item.episode || 0));
       var viewed = Lampa.Timeline.view(hash);
 
-      var card = Lampa.Template.get('онлайн_prestige_full', {
+      var card = Lampa.Template.get('rezka_item', {
         title: item.title,
-        info: ''
+        info: data_cache.translators && data_cache.translators[choice.voice] ? data_cache.translators[choice.voice].name : ''
       });
 
-      card.addClass('video--stream');
-
       if (viewed.percent) {
-        card.find('.torrent-item__progress-bar').css('width', viewed.percent + '%');
+        card.find('.rezka-item__progress-bar').css('width', viewed.percent + '%');
       }
 
       card.on('hover:enter', function () {
+        _this.activity.loader(true);
+
         _this.getStream(item, function (stream) {
+          _this.activity.loader(false);
+
           if (stream && stream.file) {
-            var playlist = [{
+            var playlist = [];
+
+            items_list.forEach(function (el, idx) {
+              playlist.push({
+                title: el.title,
+                url: el === item ? stream.file : '',
+                quality: stream.quality,
+                item: el
+              });
+            });
+
+            var current_idx = items_list.indexOf(item);
+
+            Lampa.Player.play({
               title: item.title,
               url: stream.file,
               quality: stream.quality
-            }];
+            });
 
-            if (items_list.length > 1 && item.episode) {
-              playlist = items_list.map(function (el) {
-                return {
-                  title: el.title,
-                  url: function (callback) {
-                    _this.getStream(el, function (s) {
-                      callback(s && s.file ? s.file : '');
-                    });
-                  },
-                  quality: stream.quality
-                };
-              });
-            }
-
-            var play_item = playlist.find(function (el) { return el.title === item.title; }) || playlist[0];
-
-            Lampa.Player.play(play_item);
-            Lampa.Player.playlist(playlist);
+            Lampa.Player.playlist(playlist.map(function (p, idx) {
+              return {
+                title: p.title,
+                url: idx === current_idx ? p.url : function (callback) {
+                  _this.getStream(p.item, function (s) {
+                    callback(s && s.file ? s.file : '');
+                  });
+                },
+                quality: p.quality
+              };
+            }));
 
             if (item.episode) {
               Lampa.Timeline.update({
@@ -482,7 +496,7 @@
           var streams = parseStreams(decoded);
 
           if (streams.length > 0) {
-            var files = streams.map(function (s) {
+            var streamFiles = streams.map(function (s) {
               return {
                 title: s.quality,
                 quality: s.quality,
@@ -490,11 +504,11 @@
               };
             });
 
-            var best = files[files.length - 1];
+            var best = streamFiles[streamFiles.length - 1];
 
             callback({
               file: best.file,
-              quality: files.reduce(function (acc, f) {
+              quality: streamFiles.reduce(function (acc, f) {
                 acc[f.quality] = f.file;
                 return acc;
               }, {})
@@ -526,6 +540,7 @@
     };
 
     this.start = function () {
+      var _this = this;
       if (Lampa.Activity.active().activity !== this.activity) return;
 
       Lampa.Controller.add('content', {
@@ -548,7 +563,7 @@
         down: function () {
           Navigator.move('down');
         },
-        back: this.back
+        back: _this.back
       });
 
       Lampa.Controller.toggle('content');
@@ -573,6 +588,7 @@
 
     if (!login || !password) {
       Lampa.Noty.show(Lampa.Lang.translate('rezka_enter_credentials'));
+      if (callback) callback(false);
       return;
     }
 
@@ -580,6 +596,8 @@
     var url = host + '/ajax/login/';
 
     var postdata = 'login_name=' + encodeURIComponent(login) + '&login_password=' + encodeURIComponent(password) + '&login_not_498=1';
+
+    Lampa.Noty.show(Lampa.Lang.translate('rezka_logging_in'));
 
     network.native(proxyUrl(url), function (json) {
       if (json && json.success) {
@@ -598,109 +616,61 @@
   }
 
   function addSettings() {
-    if (Lampa.Settings.main && Lampa.Settings.main().render) {
-      var field = $('<div class="settings-folder selector" data-component="rezka_settings">' +
-        '<div class="settings-folder__icon">' +
-        '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">' +
-        '<path d="M4 8L12 4L20 8V16L12 20L4 16V8Z" stroke="currentColor" stroke-width="2"/>' +
-        '<path d="M12 12L12 20M12 12L4 8M12 12L20 8" stroke="currentColor" stroke-width="2"/>' +
-        '</svg>' +
-        '</div>' +
-        '<div class="settings-folder__name">HDRezka</div>' +
-        '</div>');
-
-      Lampa.Settings.main().render().find('[data-component="more"]').after(field);
-    }
-
-    Lampa.Settings.listener.follow('open', function (event) {
-      if (event.name === 'main') {
-        var field = event.body.find('[data-component="rezka_settings"]');
-        field.unbind('hover:enter').on('hover:enter', function () {
-          Lampa.Settings.create('rezka_settings');
-        });
+    Lampa.SettingsApi.addParam({
+      component: 'rezka_settings',
+      param: {
+        name: 'rezka_mirror',
+        type: 'input',
+        placeholder: Defined.api,
+        default: ''
+      },
+      field: {
+        name: Lampa.Lang.translate('rezka_mirror')
       }
+    });
 
-      if (event.name === 'rezka_settings') {
-        event.body.find('.settings-param').remove();
-
-        var html = '<div class="settings-param selector" data-name="rezka_mirror" data-type="input">' +
-          '<div class="settings-param__name">' + Lampa.Lang.translate('rezka_mirror') + '</div>' +
-          '<div class="settings-param__value">' + (Lampa.Storage.get('rezka_mirror', '') || Defined.api) + '</div>' +
-          '</div>';
-
-        html += '<div class="settings-param selector" data-name="rezka_login" data-type="input">' +
-          '<div class="settings-param__name">' + Lampa.Lang.translate('rezka_login') + '</div>' +
-          '<div class="settings-param__value">' + (Lampa.Storage.get('rezka_login', '') || '-') + '</div>' +
-          '</div>';
-
-        html += '<div class="settings-param selector" data-name="rezka_password" data-type="input">' +
-          '<div class="settings-param__name">' + Lampa.Lang.translate('rezka_password') + '</div>' +
-          '<div class="settings-param__value">' + (Lampa.Storage.get('rezka_password', '') ? '******' : '-') + '</div>' +
-          '</div>';
-
-        html += '<div class="settings-param selector" data-name="rezka_do_login">' +
-          '<div class="settings-param__name">' + Lampa.Lang.translate('rezka_do_login') + '</div>' +
-          '</div>';
-
-        html += '<div class="settings-param selector" data-name="rezka_clear_cookie">' +
-          '<div class="settings-param__name">' + Lampa.Lang.translate('rezka_clear_cookie') + '</div>' +
-          '</div>';
-
-        html += '<div class="settings-param selector" data-name="rezka_use_proxy" data-type="toggle">' +
-          '<div class="settings-param__name">' + Lampa.Lang.translate('rezka_use_proxy') + '</div>' +
-          '<div class="settings-param__value">' + (Lampa.Storage.get('rezka_use_proxy', false) ? Lampa.Lang.translate('settings_param_yes') : Lampa.Lang.translate('settings_param_no')) + '</div>' +
-          '</div>';
-
-        event.body.append(html);
-
-        event.body.find('[data-name="rezka_mirror"]').unbind('hover:enter').on('hover:enter', function () {
-          Lampa.Input.edit({
-            title: Lampa.Lang.translate('rezka_mirror'),
-            value: Lampa.Storage.get('rezka_mirror', ''),
-            free: true
-          }, function (value) {
-            Lampa.Storage.set('rezka_mirror', value);
-            event.body.find('[data-name="rezka_mirror"] .settings-param__value').text(value || Defined.api);
-          });
-        });
-
-        event.body.find('[data-name="rezka_login"]').unbind('hover:enter').on('hover:enter', function () {
-          Lampa.Input.edit({
-            title: Lampa.Lang.translate('rezka_login'),
-            value: Lampa.Storage.get('rezka_login', ''),
-            free: true
-          }, function (value) {
-            Lampa.Storage.set('rezka_login', value);
-            event.body.find('[data-name="rezka_login"] .settings-param__value').text(value || '-');
-          });
-        });
-
-        event.body.find('[data-name="rezka_password"]').unbind('hover:enter').on('hover:enter', function () {
-          Lampa.Input.edit({
-            title: Lampa.Lang.translate('rezka_password'),
-            value: Lampa.Storage.get('rezka_password', ''),
-            free: true
-          }, function (value) {
-            Lampa.Storage.set('rezka_password', value);
-            event.body.find('[data-name="rezka_password"] .settings-param__value').text(value ? '******' : '-');
-          });
-        });
-
-        event.body.find('[data-name="rezka_do_login"]').unbind('hover:enter').on('hover:enter', function () {
-          doLogin();
-        });
-
-        event.body.find('[data-name="rezka_clear_cookie"]').unbind('hover:enter').on('hover:enter', function () {
-          Lampa.Storage.set('rezka_cookie', '');
-          Lampa.Noty.show(Lampa.Lang.translate('rezka_cookie_cleared'));
-        });
-
-        event.body.find('[data-name="rezka_use_proxy"]').unbind('hover:enter').on('hover:enter', function () {
-          var current = Lampa.Storage.get('rezka_use_proxy', false);
-          Lampa.Storage.set('rezka_use_proxy', !current);
-          event.body.find('[data-name="rezka_use_proxy"] .settings-param__value').text(!current ? Lampa.Lang.translate('settings_param_yes') : Lampa.Lang.translate('settings_param_no'));
-        });
+    Lampa.SettingsApi.addParam({
+      component: 'rezka_settings',
+      param: {
+        name: 'rezka_login',
+        type: 'input',
+        placeholder: '',
+        default: ''
+      },
+      field: {
+        name: Lampa.Lang.translate('rezka_login')
       }
+    });
+
+    Lampa.SettingsApi.addParam({
+      component: 'rezka_settings',
+      param: {
+        name: 'rezka_password',
+        type: 'input',
+        placeholder: '',
+        default: ''
+      },
+      field: {
+        name: Lampa.Lang.translate('rezka_password')
+      }
+    });
+
+    Lampa.SettingsApi.addParam({
+      component: 'rezka_settings',
+      param: {
+        name: 'rezka_use_proxy',
+        type: 'trigger',
+        default: false
+      },
+      field: {
+        name: Lampa.Lang.translate('rezka_use_proxy')
+      }
+    });
+
+    Lampa.SettingsApi.addComponent({
+      component: 'rezka_settings',
+      name: 'HDRezka',
+      icon: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 8L12 4L20 8V16L12 20L4 16V8Z" stroke="currentColor" stroke-width="2"/><path d="M12 12L12 20M12 12L4 8M12 12L20 8" stroke="currentColor" stroke-width="2"/></svg>'
     });
   }
 
@@ -735,12 +705,6 @@
 
   function addLang() {
     Lampa.Lang.add({
-      rezka_settings_title: {
-        ru: 'HDRezka',
-        uk: 'HDRezka',
-        en: 'HDRezka',
-        zh: 'HDRezka'
-      },
       rezka_mirror: {
         ru: 'Зеркало сайта',
         uk: 'Дзеркало сайту',
@@ -759,17 +723,11 @@
         en: 'Password',
         zh: '密码'
       },
-      rezka_do_login: {
-        ru: 'Войти в аккаунт',
-        uk: 'Увійти в акаунт',
-        en: 'Log in',
-        zh: '登录'
-      },
-      rezka_clear_cookie: {
-        ru: 'Очистить куки (выйти)',
-        uk: 'Очистити кукі (вийти)',
-        en: 'Clear cookies (logout)',
-        zh: '清除 Cookie（注销）'
+      rezka_use_proxy: {
+        ru: 'Использовать прокси',
+        uk: 'Використовувати проксі',
+        en: 'Use proxy',
+        zh: '使用代理'
       },
       rezka_watch: {
         ru: 'Смотреть на Rezka',
@@ -795,6 +753,12 @@
         en: 'Enter login and password in settings',
         zh: '在设置中输入用户名和密码'
       },
+      rezka_logging_in: {
+        ru: 'Выполняется вход...',
+        uk: 'Виконується вхід...',
+        en: 'Logging in...',
+        zh: '登录中...'
+      },
       rezka_login_success: {
         ru: 'Вход выполнен успешно',
         uk: 'Вхід виконано успішно',
@@ -806,12 +770,6 @@
         uk: 'Помилка входу',
         en: 'Login failed',
         zh: '登录失败'
-      },
-      rezka_cookie_cleared: {
-        ru: 'Куки очищены',
-        uk: 'Кукі очищено',
-        en: 'Cookies cleared',
-        zh: 'Cookie 已清除'
       },
       rezka_not_found: {
         ru: 'Ничего не найдено',
@@ -842,20 +800,46 @@
         uk: 'Не вдалося отримати відеопотік',
         en: 'Failed to get video stream',
         zh: '无法获取视频流'
-      },
-      rezka_use_proxy: {
-        ru: 'Использовать прокси',
-        uk: 'Використовувати проксі',
-        en: 'Use proxy',
-        zh: '使用代理'
       }
     });
   }
 
   function addTemplates() {
-    Lampa.Template.add('онлайн_folder', '<div class="selector folder"><div class="folder__icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg></div><div class="folder__name">{title}</div></div>');
+    Lampa.Template.add('rezka_item', '<div class="selector rezka-item">' +
+      '<div class="rezka-item__body">' +
+      '<div class="rezka-item__title">{title}</div>' +
+      '<div class="rezka-item__info">{info}</div>' +
+      '</div>' +
+      '<div class="rezka-item__progress"><div class="rezka-item__progress-bar"></div></div>' +
+      '</div>');
 
-    Lampa.Template.add('онлайн_prestige_full', '<div class="selector torrent-item video--stream"><div class="torrent-item__title">{title}</div><div class="torrent-item__details"><div class="torrent-item__info">{info}</div></div><div class="torrent-item__progress"><div class="torrent-item__progress-bar"></div></div></div>');
+    Lampa.Template.add('rezka_folder', '<div class="selector rezka-folder">' +
+      '<div class="rezka-folder__icon">' +
+      '<svg viewBox="0 0 128 112" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+      '<rect y="20" width="128" height="92" rx="13" fill="currentColor"/>' +
+      '<path d="M29.9963 8H98.0037C96.0446 3.3021 91.4079 0 86 0H42C36.5921 0 31.9555 3.3021 29.9963 8Z" fill="currentColor" fill-opacity="0.23"/>' +
+      '<rect x="11" y="8" width="106" height="76" rx="13" fill="currentColor" fill-opacity="0.51"/>' +
+      '</svg>' +
+      '</div>' +
+      '<div class="rezka-folder__name">{title}</div>' +
+      '</div>');
+  }
+
+  function addStyles() {
+    var style = document.createElement('style');
+    style.textContent = '' +
+      '.rezka-item { padding: 1em; background: rgba(255,255,255,0.1); margin-bottom: 0.5em; border-radius: 0.5em; position: relative; overflow: hidden; }' +
+      '.rezka-item.focus { background: rgba(255,255,255,0.3); }' +
+      '.rezka-item__title { font-size: 1.2em; margin-bottom: 0.3em; }' +
+      '.rezka-item__info { font-size: 0.9em; opacity: 0.7; }' +
+      '.rezka-item__progress { position: absolute; bottom: 0; left: 0; right: 0; height: 3px; background: rgba(255,255,255,0.2); }' +
+      '.rezka-item__progress-bar { height: 100%; background: #fff; width: 0; }' +
+      '.rezka-folder { padding: 1em; display: flex; align-items: center; background: rgba(255,255,255,0.1); margin-bottom: 0.5em; border-radius: 0.5em; }' +
+      '.rezka-folder.focus { background: rgba(255,255,255,0.3); }' +
+      '.rezka-folder__icon { width: 2em; height: 2em; margin-right: 1em; }' +
+      '.rezka-folder__icon svg { width: 100%; height: 100%; }' +
+      '.rezka-folder__name { font-size: 1.1em; }';
+    document.head.appendChild(style);
   }
 
   function startPlugin() {
@@ -864,6 +848,7 @@
 
     addLang();
     addTemplates();
+    addStyles();
 
     Lampa.Component.add('rezka_online', RezkaComponent);
 
@@ -878,9 +863,9 @@
       }
     });
 
-    setTimeout(function () {
+    if (Lampa.SettingsApi) {
       addSettings();
-    }, 500);
+    }
   }
 
   if (window.appready) {
