@@ -4,7 +4,7 @@
   var Defined = {
     api: 'https://kvk.zone',
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    proxy: 'https://cors557.deno.dev/'
+    proxy: 'https://cors.nb557.workers.dev/'
   };
 
   function useProxy() {
@@ -44,9 +44,10 @@
 
   function proxyUrl(url) {
     var use = useProxy();
-    console.log('[Rezka] useProxy:', use, 'storage value:', Lampa.Storage.field('rezka_use_proxy'));
+    console.log('[Rezka] useProxy:', use);
     if (!use) return url;
-    var result = Defined.proxy + buildProxyEnc() + url;
+    // Simple proxy format: proxy + url
+    var result = Defined.proxy + url;
     console.log('[Rezka] proxyUrl:', result);
     return result;
   }
