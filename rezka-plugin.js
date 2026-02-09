@@ -2,18 +2,46 @@
   'use strict';
 
   var Defined = {
-    api: 'https://rezka.ag',
+    api: 'https://kvk.zone',
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    proxy: 'https://cors.nb557.workers.dev/'
+    proxy: (window.location.protocol === 'https:' ? 'https://' : 'http://') + 'iqslgbok.deploy.cx/'
   };
 
   function useProxy() {
     return Lampa.Storage.field('rezka_use_proxy') === true;
   }
 
+  function buildProxyEnc() {
+    var host = getMirror();
+    var ref = host + '/';
+    var cookie = Lampa.Storage.get('rezka_cookie', '') + '';
+
+    if (cookie.indexOf('PHPSESSID=') === -1) {
+      cookie = 'PHPSESSID=' + randomId(26) + (cookie ? '; ' + cookie : '');
+    }
+
+    var enc = '';
+    enc += 'param/Origin=' + encodeURIComponent(host) + '/';
+    enc += 'param/Referer=' + encodeURIComponent(ref) + '/';
+    enc += 'param/User-Agent=' + encodeURIComponent(Defined.userAgent) + '/';
+    if (cookie) {
+      enc += 'param/Cookie=' + encodeURIComponent(cookie) + '/';
+    }
+    return enc;
+  }
+
+  function randomId(length) {
+    var chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    var result = '';
+    for (var i = 0; i < length; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+  }
+
   function proxyUrl(url) {
     if (!useProxy()) return url;
-    return Defined.proxy + url;
+    return Defined.proxy + buildProxyEnc() + url;
   }
 
   function getMirror() {
@@ -25,6 +53,10 @@
   }
 
   function getHeaders() {
+    // When proxy is enabled, headers are encoded in URL, so return empty
+    if (useProxy()) {
+      return {};
+    }
     var host = getMirror();
     var cookie = Lampa.Storage.get('rezka_cookie', '') + '';
     var headers = {
@@ -38,44 +70,107 @@
     return headers;
   }
 
-  function decodeStreamUrl(encoded) {
-    if (!encoded) return '';
-    if (encoded.indexOf('#') === -1) return encoded;
+  function decodeStreamUrl(data) {
+    if (!data) return '';
+    if (data.indexOf('#') !== 0) return data;
 
-    var trash = ['@', '#', '!', '^', '$'];
-    var trashRegex = new RegExp('[' + trash.join('\\') + ']+', 'g');
-    var cleaned = encoded.replace(trashRegex, '');
+    var enc = function (str) {
+      return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, function (match, p1) {
+        return String.fromCharCode('0x' + p1);
+      }));
+    };
+
+    var dec = function (str) {
+      return decodeURIComponent(atob(str).split('').map(function (c) {
+        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+      }).join(''));
+    };
+
+    var trashList = ['$$!!@$$@^!@#$$@', '@@@@@!##!^^^', '####^!!##!@@', '^^^!@##!!##', '$$#!!@#!@##'];
+    var x = data.substring(2);
+    trashList.forEach(function (trash) {
+      x = x.replace('//_//' + enc(trash), '');
+    });
 
     try {
-      return atob(cleaned);
+      return dec(x);
     } catch (e) {
-      return encoded;
+      return data;
     }
   }
 
-  function parseStreams(data) {
-    var streams = [];
-    if (!data) return streams;
+  function parsePlaylist(str) {
+    var pl = [];
+    if (!str) return pl;
 
-    var parts = data.split(',');
-    parts.forEach(function (part) {
-      var match = part.match(/\[(\d+p[^\]]*)\](https?:\/\/[^\s,]+)/);
-      if (match) {
-        var quality = match[1];
-        var urlPart = match[2];
-        var urls = urlPart.split(' or ');
-        urls.forEach(function (url) {
-          if (url) {
-            streams.push({
-              quality: quality,
-              url: url.trim()
+    try {
+      if (str.indexOf('[') === 0) {
+        str.substring(1).split(/, *\[/).forEach(function (item) {
+          item = item.trim();
+          if (item.charAt(item.length - 1) === ',') {
+            item = item.substring(0, item.length - 1).trim();
+          }
+          var label_end = item.indexOf(']');
+          if (label_end >= 0) {
+            var label = item.substring(0, label_end).trim();
+            var links_str = item.substring(label_end + 1).trim();
+            var links = links_str.split(' or ').map(function (link) {
+              return link.trim();
+            }).filter(function (link) {
+              return link;
+            });
+            pl.push({
+              label: label,
+              links: links
             });
           }
         });
       }
-    });
+    } catch (e) {}
 
-    return streams;
+    return pl;
+  }
+
+  function extractItems(str) {
+    if (!str) return [];
+
+    try {
+      var items = parsePlaylist(str).map(function (item) {
+        var int_quality = NaN;
+        var quality = item.label.match(/(\d\d\d+)/);
+        if (quality) {
+          int_quality = parseInt(quality[1]);
+        }
+
+        // Prefer m3u8 over mp4
+        var links = item.links.filter(function (url) {
+          return /\.m3u8$/i.test(url);
+        });
+        if (!links.length) {
+          links = item.links.filter(function (url) {
+            return /\.mp4$/i.test(url);
+          });
+        }
+        if (!links.length) links = item.links;
+
+        var link = links[0] || '';
+        return {
+          label: item.label,
+          quality: int_quality,
+          file: link
+        };
+      });
+
+      items.sort(function (a, b) {
+        if (b.quality > a.quality) return 1;
+        if (b.quality < a.quality) return -1;
+        return 0;
+      });
+
+      return items;
+    } catch (e) {}
+
+    return [];
   }
 
   function RezkaComponent(object) {
@@ -493,23 +588,15 @@
       network.native(proxyUrl(url), function (json) {
         if (json && json.url) {
           var decoded = decodeStreamUrl(json.url);
-          var streams = parseStreams(decoded);
+          var items = extractItems(decoded);
 
-          if (streams.length > 0) {
-            var streamFiles = streams.map(function (s) {
-              return {
-                title: s.quality,
-                quality: s.quality,
-                file: s.url
-              };
-            });
-
-            var best = streamFiles[streamFiles.length - 1];
+          if (items.length > 0) {
+            var best = items[0]; // items are sorted, best quality first
 
             callback({
               file: best.file,
-              quality: streamFiles.reduce(function (acc, f) {
-                acc[f.quality] = f.file;
+              quality: items.reduce(function (acc, f) {
+                acc[f.label] = f.file;
                 return acc;
               }, {})
             });
@@ -608,7 +695,7 @@
 
   function initSettings() {
     var template = '<div>' +
-      '<div class="settings-param selector" data-name="rezka_mirror" data-type="input" placeholder="' + Defined.api + '">' +
+      '<div class="settings-param selector" data-name="rezka_mirror" data-type="input" placeholder="kvk.zone">' +
       '<div class="settings-param__name">#{rezka_mirror}</div>' +
       '<div class="settings-param__value"></div>' +
       '</div>' +
